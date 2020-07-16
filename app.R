@@ -81,7 +81,7 @@ ui <- fluidPage(
       tabsetPanel(
         type = "tabs",
         tabPanel("Scenarios", dataTableOutput("highScores")),
-        tabPanel("Attempts by Week", plotOutput("attempts"), height='800px'),
+        tabPanel("Attempts by Week", plotOutput("attempts", height='800px')),
         tabPanel("Individual Attempts", dataTableOutput("info")),
         tabPanel("Score by Attempt", plotOutput("scorePlot", height="800px")),
         tabPanel("Accuracy by Attempt", plotOutput("accPlot", height="800px")),

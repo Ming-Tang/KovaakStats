@@ -5,6 +5,13 @@ library(readr)
 library(tidyquant)
 library(lubridate)
 
+process_stats <- function(stats1) {
+  stats1 <- stats1[, .(N=1L:.N, DateTime, Score, Accuracy, AvgTTK, Count=.N, HighScore=cummax(Score)), by='Scenario']
+  stats1[, Week := as.integer(lubridate::isoweek(DateTime) - min(lubridate::isoweek(DateTime)))]
+  stats1[, WeekGroup := as.factor(Week)]
+  stats1
+}
+
 if (file.exists("old_stats.csv")) {
   old_stats <- data.table(read_csv("old_stats.csv", col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
 } else {
@@ -13,13 +20,6 @@ if (file.exists("old_stats.csv")) {
 
 stats <- data.table(read_csv("stats.csv", col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
 stats <- rbind(old_stats, stats, fill=TRUE)
-
-process_stats <- function(stats) {
-  stats <- stats[, .(N=1L:.N, DateTime, Score, Accuracy, AvgTTK, Count=.N, HighScore=cummax(Score)), by='Scenario']
-  stats[, Week := as.integer(lubridate::isoweek(DateTime) - min(lubridate::isoweek(DateTime)))]
-  stats[, WeekGroup := as.factor(Week)]
-}
-
 stats <- process_stats(stats)
 scenarios <- unique(stats$Scenario)
 
@@ -28,7 +28,15 @@ ui <- fluidPage(
 
   sidebarLayout(
     sidebarPanel(
-      h2('Filter'),
+      h3('Upload'),
+      fileInput("csvFile",
+                "Upload stats.csv",
+                accept = c(
+                  "text/csv",
+                  "text/comma-separated-values,text/plain",
+                  ".csv")),
+
+      h3('Filter'),
       sliderInput("minAttempts",
                   "Min. attempts",
                   step = 10L, min = 20L, max = max(stats$N),
@@ -42,7 +50,7 @@ ui <- fluidPage(
                     value="",
                     placeholder="One scenario per line, case-insensitive. Ignores other filters if filled."),
 
-      h2('Plotting'),
+      h3('Plotting'),
       sliderInput("facetCols",
                   "Plot columns",
                   step = 1L, min = 1L, max = 8L,
@@ -69,6 +77,7 @@ ui <- fluidPage(
 
     # Show a plot of the generated distribution
     mainPanel(
+      h2(textOutput("stats_updated")),
       tabsetPanel(
         type = "tabs",
         tabPanel("Scenarios", dataTableOutput("highScores")),
@@ -87,22 +96,36 @@ ui <- fluidPage(
 
 server <- function(input, output) {
   included <- reactive({
+    included.
+  })
+
+  stats. <- reactive({
+    if (!is.null(input$csvFile)) {
+      stats <- data.table(read_csv(input$csvFile$datapath, col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
+      stats <- process_stats(stats)
+      scenarios <- unique(stats$Scenario)
+      old_stats <- NULL
+    }
+
     stats[, WeekGroup := as.factor(as.integer(Week / input$weekBucketSize) * input$weekBucketSize)]
     if (nchar(input$scenarioLines) > 0) {
       parts <- tolower(strsplit(input$scenarioLines, "\n")[[1]])
-      print(parts)
-      stats[, tolower(Scenario) %in% parts]
+      included <- stats[, tolower(Scenario) %in% parts]
     } else {
-      stats[, Count >= input$minAttempts & input$weekRange[1] <= Week & Week <= input$weekRange[2]]
+      included <- stats[, Count >= input$minAttempts & input$weekRange[1] <= Week & Week <= input$weekRange[2]]
     }
+
+    stats[, I := included][I == TRUE]
   })
 
-  mas <- reactive({ if(input$includeMA) list(
-    geom_ma(ma_fun=SMA, n=50, size=1, linetype='solid', col='blue'),
-    geom_ma(ma_fun=SMA, n=30, size=1, linetype='solid', col='blue', alpha=0.5),
-    geom_ma(ma_fun=SMA, n=10, size=1, linetype='solid', col='blue', alpha=0.25),
-    geom_ma(ma_fun=SMA, n=5, size=1, linetype='solid', col='blue', alpha=0.1)
-  ) else list() })
+  mas <- reactive({
+    if(input$includeMA) list(
+      geom_ma(ma_fun=SMA, n=50, size=1, linetype='solid', col='blue'),
+      geom_ma(ma_fun=SMA, n=30, size=1, linetype='solid', col='blue', alpha=0.5),
+      geom_ma(ma_fun=SMA, n=10, size=1, linetype='solid', col='blue', alpha=0.25),
+      geom_ma(ma_fun=SMA, n=5, size=1, linetype='solid', col='blue', alpha=0.1))
+    else list()
+  })
 
   fw <- reactive({ facet_wrap(Scenario ~ ., scales = 'free', ncol = input$facetCols) })
 
@@ -114,45 +137,45 @@ server <- function(input, output) {
   pt <- reactive({ geom_point(alpha=input$pointOpacity, size=input$pointSize, stroke=0) })
 
   output$attempts <- renderPlot({
-    qplot(WeekGroup, Scenario, data=stats[, I := included()][I == TRUE][, .(Attempts = .N), by=.(Scenario, WeekGroup)], col=Attempts, fill=Attempts, geom='tile') +
+    qplot(WeekGroup, Scenario, data=stats.()[, .(Attempts = .N), by=.(Scenario, WeekGroup)], col=Attempts, fill=Attempts, geom='tile') +
       geom_text(aes(label=Attempts), col='white')
   })
 
-  output$info <- renderDataTable({ stats[, I := included()][I == TRUE] })
+  output$info <- renderDataTable({ stats.() })
 
   output$highScores <- renderDataTable({
-    stats[, I := included()][I == TRUE][, .(HighScore=round(max(Score), 2), Attempts=.N), by=Scenario][order(tolower(Scenario))][Attempts >= input$minAttempts]
+    stats.()[, .(HighScore=round(max(Score), 2), Attempts=.N), by=Scenario][order(tolower(Scenario))][Attempts >= input$minAttempts]
   })
 
   output$scorePlot <- renderPlot({
-    ggplot(aes(N, Score, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(N, Score, col=WeekGroup), data=stats.()) +
       geom_line(aes(N, HighScore), col='red') +
       pt() + mas() + fw()
   })
 
   output$accPlot <- renderPlot({
-    ggplot(aes(N, Accuracy, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(N, Accuracy, col=WeekGroup), data=stats.()) +
       pt() + mas() + fw()
   })
 
   output$scoreDatePlot <- renderPlot({
-    ggplot(aes(DateTime, Score, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(DateTime, Score, col=WeekGroup), data=stats.()) +
       geom_line(aes(DateTime, HighScore), col='red') +
       pt() + fw()
   })
 
   output$accDatePlot <- renderPlot({
-    ggplot(aes(DateTime, Accuracy, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(DateTime, Accuracy, col=WeekGroup), data=stats.()) +
       pt() + fw()
   })
 
   output$relPlot <- renderPlot({
-    ggplot(aes(Accuracy, Score, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(Accuracy, Score, col=WeekGroup), data=stats.()) +
       jitter() + fw()
   })
 
   output$relPlotUnadjusted <- renderPlot({
-    ggplot(aes(Accuracy, Score / Accuracy, col=WeekGroup), data=stats[, `:=`(I=included())][I == TRUE]) +
+    ggplot(aes(Accuracy, Score / Accuracy, col=WeekGroup), data=stats.()) +
       jitter() + fw()
   })
 }

@@ -1,0 +1,9 @@
+old_stats.csv
+stats.csv
+Report.html
+Report.Rmd
+.RData
+.Rhistory
+*.pyc
+__pycache__/*
+.Rproj.user

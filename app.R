@@ -7,6 +7,10 @@ library(lubridate)
 
 process_stats <- function(stats1) {
   stats1 <- stats1[, .(N=1L:.N, DateTime, Score, Accuracy, AvgTTK, Count=.N, HighScore=cummax(Score)), by='Scenario']
+  setorder(stats1, Scenario, N)
+  stats1[, IsNewSession := c(TRUE, diff(DateTime) > 270), by='Scenario']
+  stats1[, Session := cumsum(1L * IsNewSession), by='Scenario']
+  stats1[, NSession := 1L:.N, by=c('Scenario', 'Session')]
   stats1[, IsNewRecord := c(FALSE, diff(HighScore) > 0), by='Scenario']
   stats1[, Week := as.integer(lubridate::isoweek(DateTime) - min(lubridate::isoweek(DateTime)))]
   stats1[, WeekGroup := as.factor(Week)]
@@ -24,7 +28,8 @@ stats <- rbind(old_stats, stats, fill=TRUE)
 stats <- process_stats(stats)
 scenarios <- unique(stats$Scenario)
 
-measureVars <- c("N", "DateTime", "Score", "Accuracy", "IsNewRecord", "AvgTTK", "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
+measureVars <- c("N",  "NSession", "Session", "DateTime", "Score", "Accuracy", "IsNewRecord", "AvgTTK", "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
+colorVars <- c(measureVars, "IsNewSession", "Week", "WeekGroup", "(None)")
 
 ui <- fluidPage(
   titlePanel("Kovaak Stats"),
@@ -70,8 +75,8 @@ ui <- fluidPage(
                   value = 1L),
       sliderInput("pointSize",
                   "Point Size",
-                  step = 0.1, min = 0.0, max = 5.0,
-                  value = 2),
+                  step = 0.1, min = 0.0, max = 10.0,
+                  value = 3.0),
       sliderInput("pointOpacity",
                   "Point Opacity",
                   step = 0.05, min = 0.0, max = 1.0,
@@ -103,11 +108,15 @@ ui <- fluidPage(
                                         column(4, selectInput("yVar", "Y Variable", measureVars, "Score")),
                                         column(4, selectInput("yFunc", "Y Function", c("Y", "log Y", "1 / Y", "60 / Y"), "Y")),
                                         column(4, textInput("yLabel", "Y Custom Label", placeholder="(default)"))
+                                        ),
+                                 column(12,
+                                        column(4, selectInput("colorVar", "Color Variable", colorVars, "WeekGroup")),
+                                        column(4, selectInput("sizeVar", "Size Variable", colorVars, "(None)"))
                                         )
                                 ),
                           column(3,
                                  selectInput("trends", "Trendlines", c("None", "Line", "Curve")),
-                                 selectInput("customGeom", "Geometry", c("Point", "Line")),
+                                 selectInput("customGeom", "Geometry", c("Point", "Line", "Path")),
                                  checkboxInput("flipAxes", "Flip Axes")
                                  ),
                           column(12, plotOutput("customRelPlot", height="800px"))))
@@ -159,11 +168,8 @@ server <- function(input, output, session) {
 
   jitter <- reactive({
     list({
-      if (input$jitterRels)
-        geom_jitter(aes(stroke=IsNewRecord), width=0.01, height=0.01,
-                    alpha=input$pointOpacity, size=input$pointSize)
-      else geom_point(aes(stroke=IsNewRecord), alpha=input$pointOpacity,
-                      size=input$pointSize)
+      if (input$jitterRels) geom_jitter(width=0.01, height=0.01, alpha=input$pointOpacity, size=input$pointSize)
+      else geom_point(alpha=input$pointOpacity, size=input$pointSize)
     })
   })
 
@@ -214,14 +220,20 @@ server <- function(input, output, session) {
     if (input$xFunc == "60 / X") X <- paste0("60 / (", X, ")")
     if (input$yFunc == "1 / Y") Y <- paste0("1 / (", Y, ")")
     if (input$yFunc == "60 / Y") Y <- paste0("60 / (", Y, ")")
-    ggplot(aes_string(X, Y, col="WeekGroup"), data=stats.()) +
+
+    gpt <- {
+      if (input$sizeVar == '(None)') jitter()
+      else if (input$jitterRels) geom_jitter(width=0.01, height=0.01, alpha=input$pointOpacity)
+      else geom_point(alpha=input$pointOpacity)
+    }
+    ggplot(aes_string(X, Y, col=ifelse(input$colorVar == '(None)', 1L, input$colorVar), size=ifelse(input$sizeVar == '(None)', 1L, input$sizeVar)), data=stats.()) +
       fw() +
-      { if(input$customGeom == 'Point') jitter() else geom_line(alpha=input$pointOpacity) } +
+      { if(input$customGeom == 'Point') gpt else if (input$customGeom == 'Path') geom_path(alpha=input$pointOpacity) else geom_line(alpha=input$pointOpacity) } +
       { if(input$xFunc == "log X") scale_x_log10() else list() } +
       { if(input$yFunc == "log Y") scale_y_log10() else list() } +
       { if(input$xLabel != '') xlab(input$xLabel) else list() } +
       { if(input$yLabel != '') ylab(input$yLabel) else list() } +
-      { if(input$trends == 'None') list() else if (input$trends == 'Line') geom_smooth(method='lm', se=FALSE) else geom_smooth(method='loess', se=FALSE) } +
+      { if(input$trends == 'None') list() else if (input$trends == 'Line') geom_smooth(method='lm', se=FALSE, size=1) else geom_smooth(method='loess', se=FALSE, size=1) } +
       { if(input$flipAxes) coord_flip() else list() }
   })
 }

@@ -19,12 +19,14 @@ To re-run data import, repeat steps 3 and 4 below.
 
 2. Open `KovaakStats.Rproj` with RStudio
 
-3. Open `import.py`
+3. Enter the full path to `FPSAimTrainer/stats` and save it into `kovaak_path.txt` in the project folder
 
-4. Click "Source Script" (Ctrl+Shift+S)
+4. Open `import.py`
 
-5. Open `KovaakStats/app.R`
+5. Click "Source Script" (Ctrl+Shift+S)
 
-6. Install missing R packages
+6. Open `KovaakStats/app.R`
 
-7. Click "Run App"
+7. Install missing R packages
+
+8. Click "Run App"

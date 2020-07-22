@@ -24,7 +24,8 @@ fields = [
     'Damage Done',
     'Damage Taken',
     'Distance Traveled',
-    'Score'
+    'Score',
+    'Hash'
 ]
 
 with open(out_path, 'w') as outfile:

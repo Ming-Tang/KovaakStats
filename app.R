@@ -5,8 +5,10 @@ library(readr)
 library(tidyquant)
 library(lubridate)
 
+bad_hashes <- c('cf99ce6498b53400492284bfc9747fa4', 'd2846dafdec6b55aa53b4d39c1d97074')
+
 process_stats <- function(stats1) {
-  stats1 <- stats1[, `:=`(N=1L:.N, Count=.N, HighScore=cummax(Score)), by='Scenario']
+  stats1 <- stats1[!(Hash %in% bad_hashes)][, `:=`(N=1L:.N, Count=.N, HighScore=cummax(Score)), by='Scenario']
   setorder(stats1, Scenario, N)
   stats1[, IsNewSession := c(TRUE, diff(DateTime) > 270), by='Scenario']
   stats1[, Session := cumsum(1L * IsNewSession), by='Scenario']
@@ -25,7 +27,7 @@ measureVars <- c(
   "N", "NSession", "Session", "DateTime", "Score", "Shots", "Hits", "Accuracy", "IsNewRecord",
   "Kills", "Deaths", "FightTime", "AvgTTK", "DamageDone", "DamageTaken", "DistanceTraveled",
   "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
-colorVars <- c(measureVars, "IsNewSession", "Week", "WeekGroup", "(None)")
+colorVars <- c("(None)", "Hash", "IsNewSession", "Week", "WeekGroup", measureVars)
 
 ui <- fluidPage(
   titlePanel("Kovaak Stats"),

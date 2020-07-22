@@ -6,11 +6,13 @@ import traceback
 
 # Path to Kovaak stats csv files
 path = None
-if len(sys.argv) == 2:
-    path = sys.argv[2]
+if len(sys.argv) >= 2:
+    path = sys.argv[1]
 else:
     with open('kovaak_path.txt') as f:
         path = next(f).strip()
+        
+out_path = sys.argv[2] if len(sys.argv) >= 3 else 'stats.csv'
 
 fn_pat = re.compile(r'^(.*) - Challenge - (.*?) Stats\.csv$')
 
@@ -25,7 +27,7 @@ fields = [
     'Score'
 ]
 
-with open('stats.csv', 'w') as outfile:
+with open(out_path, 'w') as outfile:
     print('Scenario, DateTime, Accuracy, Shots, Hits, ' + ', '.join(f.replace(' ', '') for f in fields), file=outfile)
     for p in glob('{}/*.csv'.format(path)):
         try:

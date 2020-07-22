@@ -6,7 +6,7 @@ library(tidyquant)
 library(lubridate)
 
 process_stats <- function(stats1) {
-  stats1 <- stats1[, .(N=1L:.N, DateTime, Score, Accuracy, AvgTTK, Count=.N, HighScore=cummax(Score)), by='Scenario']
+  stats1 <- stats1[, `:=`(N=1L:.N, Count=.N, HighScore=cummax(Score)), by='Scenario']
   setorder(stats1, Scenario, N)
   stats1[, IsNewSession := c(TRUE, diff(DateTime) > 270), by='Scenario']
   stats1[, Session := cumsum(1L * IsNewSession), by='Scenario']
@@ -17,18 +17,14 @@ process_stats <- function(stats1) {
   stats1
 }
 
-if (file.exists("old_stats.csv")) {
-  old_stats <- data.table(read_csv("old_stats.csv", col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
-} else {
-  old_stats <- NULL
-}
-
 stats <- data.table(read_csv("stats.csv", col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
-stats <- rbind(old_stats, stats, fill=TRUE)
 stats <- process_stats(stats)
 scenarios <- unique(stats$Scenario)
 
-measureVars <- c("N",  "NSession", "Session", "DateTime", "Score", "Accuracy", "IsNewRecord", "AvgTTK", "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
+measureVars <- c(
+  "N", "NSession", "Session", "DateTime", "Score", "Shots", "Hits", "Accuracy", "IsNewRecord",
+  "Kills", "Deaths", "FightTime", "AvgTTK", "DamageDone", "DamageTaken", "DistanceTraveled",
+  "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
 colorVars <- c(measureVars, "IsNewSession", "Week", "WeekGroup", "(None)")
 
 ui <- fluidPage(
@@ -70,7 +66,7 @@ ui <- fluidPage(
       checkboxInput("jitterRels",
                     "Jitter points in Score by Accuracy and Custom Plot"),
       sliderInput("weekBucketSize",
-                  "Color by week group size",
+                  "Week group size",
                   step = 1L, min = 1L, max = max(stats$Week) + 1,
                   value = 1L),
       sliderInput("pointSize",
@@ -226,7 +222,8 @@ server <- function(input, output, session) {
       else if (input$jitterRels) geom_jitter(width=0.01, height=0.01, alpha=input$pointOpacity)
       else geom_point(alpha=input$pointOpacity)
     }
-    ggplot(aes_string(X, Y, col=ifelse(input$colorVar == '(None)', 1L, input$colorVar), size=ifelse(input$sizeVar == '(None)', 1L, input$sizeVar)), data=stats.()) +
+    col_part <- ifelse(input$colorVar == '(None)', 1L, input$colorVar)
+    ggplot({ if(input$sizeVar == '(None)') aes_string(X, Y, col=col_part) else aes_string(X, Y, col=col_part, size=input$sizeVar) }, data=stats.()) +
       fw() +
       { if(input$customGeom == 'Point') gpt else if (input$customGeom == 'Path') geom_path(alpha=input$pointOpacity) else geom_line(alpha=input$pointOpacity) } +
       { if(input$xFunc == "log X") scale_x_log10() else list() } +

@@ -14,8 +14,19 @@ else:
 
 fn_pat = re.compile(r'^(.*) - Challenge - (.*?) Stats\.csv$')
 
+fields = [
+    'Kills',
+    'Deaths', 
+    'Fight Time',
+    'Avg TTK',
+    'Damage Done',
+    'Damage Taken',
+    'Distance Traveled',
+    'Score'
+]
+
 with open('stats.csv', 'w') as outfile:
-    print('Scenario, DateTime, Score, Accuracy, AvgTTK', file=outfile)
+    print('Scenario, DateTime, Accuracy, Shots, Hits, ' + ', '.join(f.replace(' ', '') for f in fields), file=outfile)
     for p in glob('{}/*.csv'.format(path)):
         try:
             _, fn = os.path.split(p)
@@ -25,7 +36,8 @@ with open('stats.csv', 'w') as outfile:
             date_part, time_part = m.group(2).split('-')
             date = '{}T{}'.format(date_part.replace('.', '-'), time_part.replace('.', ':'))
             
-            score, acc, avg_ttk, weapons_part = None, None, None, None
+            data = ['NA' for f in fields]
+            weapons_part, shots, hits, acc = None, 'NA', 'NA', 'NA'
             for line in open(p, 'r'):
                 if line.strip() == '':
                     weapons_part = False
@@ -36,18 +48,18 @@ with open('stats.csv', 'w') as outfile:
                     try:
                         parts = line.split(',')
                         shots, hits = parts[1], parts[2]
-                        acc = int(hits) / int(shots)
-                    except (IndexError, ArgumentError):
+                        acc = 0 if int(shots) == 0 else int(hits) / int(shots)
+                    except (IndexError, TypeError):
                         pass
                     
-                elif line.startswith('Avg TTK:,'):
-                    avg_ttk = line.replace('Avg TTK:,', '').strip()
+                else:
+                    for i, f in enumerate(fields):
+                        pat = f+ ':,'
+                        if line.startswith(pat):
+                            data[i] = line[len(pat):].strip()
+                            break
                     
-                elif line.startswith('Score:,'):
-                    score = line.replace('Score:,', '').strip()
-                    
-            print('{}, {}, {}, {}, {}'.format(name, date, score, acc, avg_ttk),
-                  file=outfile)
+            print('{}, {}, {}, {}, {}, {}'.format(name.replace(',', ';'), date, acc, shots, hits, ', '.join(map(str, data))), file=outfile)
         except:
-            traceback.format_exc()
+            print(traceback.format_exc())
     

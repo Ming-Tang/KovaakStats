@@ -16,6 +16,7 @@ process_stats <- function(stats1) {
   stats1[, IsNewRecord := c(FALSE, diff(HighScore) > 0), by='Scenario']
   stats1[, Week := as.integer(lubridate::isoweek(DateTime) - min(lubridate::isoweek(DateTime)))]
   stats1[, WeekGroup := as.factor(Week)]
+  stats1[, NGroup := as.factor(N)]
   stats1
 }
 
@@ -27,7 +28,7 @@ measureVars <- c(
   "N", "NSession", "Session", "DateTime", "Score", "Shots", "Hits", "Accuracy", "IsNewRecord",
   "Kills", "Deaths", "FightTime", "AvgTTK", "DamageDone", "DamageTaken", "DistanceTraveled",
   "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
-colorVars <- c("(None)", "Hash", "IsNewSession", "Week", "WeekGroup", measureVars)
+colorVars <- c("(None)", "Hash", "IsNewSession", "Week", "WeekGroup", "NGroup", measureVars)
 
 ui <- fluidPage(
   titlePanel("Kovaak Stats"),
@@ -70,6 +71,10 @@ ui <- fluidPage(
       sliderInput("weekBucketSize",
                   "Week group size",
                   step = 1L, min = 1L, max = max(stats$Week) + 1,
+                  value = 1L),
+      sliderInput("nBucketSize",
+                  "Attempt # group (NGroup) size",
+                  step = 5L, min = 5L, max = as.integer(max(stats$N) / 5) * 5 + 5,
                   value = 1L),
       sliderInput("pointSize",
                   "Point Size",
@@ -139,6 +144,7 @@ server <- function(input, output, session) {
     }
 
     stats[, WeekGroup := as.factor(as.integer(Week / input$weekBucketSize) * input$weekBucketSize)]
+    stats[, NGroup := as.factor(as.integer(N / input$nBucketSize) * input$nBucketSize)]
     if (nchar(input$scenarioLines) > 0) {
       parts <- tolower(strsplit(input$scenarioLines, "\n")[[1]])
       included <- stats[, tolower(Scenario) %in% parts]

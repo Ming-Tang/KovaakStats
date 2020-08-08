@@ -8,6 +8,7 @@ library(lubridate)
 bad_hashes <- c('cf99ce6498b53400492284bfc9747fa4', 'd2846dafdec6b55aa53b4d39c1d97074')
 
 process_stats <- function(stats1) {
+  setorder(stats1, Scenario, DateTime)
   stats1 <- stats1[!(Hash %in% bad_hashes)][, `:=`(N=1L:.N, Count=.N, HighScore=cummax(Score)), by='Scenario']
   setorder(stats1, Scenario, N)
   stats1[, IsNewSession := c(TRUE, diff(DateTime) > 270), by='Scenario']
@@ -57,6 +58,8 @@ ui <- fluidPage(
                     value="",
                     placeholder="One scenario per line, case-insensitive. Ignores other filters if filled."),
       actionLink('fillScenarioLines', 'Fill Scenario List'),
+      tags$br(),
+      actionLink('fillRecent', 'Fill Recent Scenarios'),
 
       h3('Plotting'),
       sliderInput("facetCols",
@@ -157,6 +160,11 @@ server <- function(input, output, session) {
 
   observeEvent(input$fillScenarioLines, {
     updateTextAreaInput(session, 'scenarioLines', value=paste(unique(stats.()$Scenario), collapse="\n"))
+  })
+
+  observeEvent(input$fillRecent, {
+    updateTextAreaInput(session, 'scenarioLines', value=paste(
+      na.omit(stats.()[order(DateTime, decreasing=TRUE)][, unique(Scenario)][1L:30L]), collapse="\n"))
   })
 
   mas <- reactive({

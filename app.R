@@ -47,7 +47,7 @@ ui <- fluidPage(
       h3('Filter'),
       sliderInput("minAttempts",
                   "Min. attempts",
-                  step = 10L, min = 20L, max = max(stats$N),
+                  step = 10L, min = 0L, max = max(stats$N),
                   value = 100L),
       sliderInput("weekRange",
                   "Weeks",
@@ -125,7 +125,12 @@ ui <- fluidPage(
                                  selectInput("customGeom", "Geometry", c("Point", "Line", "Path")),
                                  checkboxInput("flipAxes", "Flip Axes")
                                  ),
-                          column(12, plotOutput("customRelPlot", height="800px"))))
+                          column(12, plotOutput("customRelPlot", height="800px")))),
+        tabPanel("Scenario vs. Scenario Plot",
+                 fluidRow(column(12, column(4, selectInput("xScenario", "Scenario 1", scenarios, '1wall6targets TE')),
+                                     column(4, selectInput("yScenario", "Scenario 2", scenarios, '1wall 6targets small')),
+                                     column(4, sliderInput("xyGroupSize", "Group Size", value = 5L, step = 5L, min = 5L, max = 50L))),
+                          column(12, plotOutput("xyPlot", height="800px"))))
       )
     )
   )
@@ -248,6 +253,16 @@ server <- function(input, output, session) {
       { if(input$yLabel != '') ylab(input$yLabel) else list() } +
       { if(input$trends == 'None') list() else if (input$trends == 'Line') geom_smooth(method='lm', se=FALSE, size=1) else geom_smooth(method='loess', se=FALSE, size=1) } +
       { if(input$flipAxes) coord_flip() else list() }
+  })
+
+  output$xyPlot <- renderPlot({
+    xyData <- stats.()
+    xyData <- xyData[Scenario %in% c(input$xScenario, input$yScenario)][order(DateTime), Group := as.integer(((1L:.N)-1L)/input$xyGroupSize) * input$xyGroupSize]
+    xyData <- xyData[
+      , .(X=.SD[Scenario==input$xScenario, mean(Score, na.rm=TRUE)],
+          Y=.SD[Scenario==input$yScenario, mean(Score, na.rm=TRUE)]),
+      by=Group][!is.nan(X+Y)]
+    qplot(X, Y, data=xyData, col=Group) + xlab(input$xScenario) + ylab(input$yScenario) + geom_smooth(method="lm", se=FALSE) + pt()
   })
 }
 

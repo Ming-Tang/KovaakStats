@@ -8,6 +8,8 @@ library(lubridate)
 bad_hashes <- c('cf99ce6498b53400492284bfc9747fa4', 'd2846dafdec6b55aa53b4d39c1d97074')
 
 process_stats <- function(stats1) {
+  setorder(stats1, DateTime)
+  stats1[, Number := 1L:.N]
   setorder(stats1, Scenario, DateTime)
   stats1 <- stats1[!(Hash %in% bad_hashes)][, `:=`(N=1L:.N, Count=.N, HighScore=cummax(Score)), by='Scenario']
   setorder(stats1, Scenario, N)
@@ -26,10 +28,33 @@ stats <- process_stats(stats)
 scenarios <- unique(stats$Scenario)
 
 measureVars <- c(
-  "N", "NSession", "Session", "DateTime", "Score", "Shots", "Hits", "Accuracy", "IsNewRecord",
+  "N", "NSession", "Number", "Session", "DateTime", "Score", "Shots", "Hits", "Accuracy", "IsNewRecord",
   "Kills", "Deaths", "FightTime", "AvgTTK", "DamageDone", "DamageTaken", "DistanceTraveled",
   "HighScore", "Score*Accuracy", "Score/Accuracy", "Score/Accuracy^2")
 colorVars <- c("(None)", "Hash", "IsNewSession", "Week", "WeekGroup", "NGroup", measureVars)
+
+sparkyScenarios <- c(
+  "1wall5targets_pasu Reload",
+  "Popcorn Sparky",
+  "ww6t reload",
+  "1w6ts reload v2",
+  "Bounce 180 Sparky",
+  "Air no UFO no SKYBOTS",
+  "Ground Plaza Sparky V3",
+  "Popcorn Goated Tracking Invincible",
+  "Thin Gauntlet V2",
+  "Pasu Track Invincible v2",
+  "patTS NR",
+  "Bounce 180 Tracking",
+  "kinTS NR",
+  "devTS Goated NR",
+  "voxTargetSwitch",
+  "Air Dodge",
+  "Pasu Dodge Easy",
+  "Pistol Strafe Gallery Sparky",
+  "lgc3 Reborn",
+  "patTargetSwitch Dodge 360 v2"
+)
 
 ui <- fluidPage(
   titlePanel("Kovaak Stats"),
@@ -117,7 +142,8 @@ ui <- fluidPage(
                                         ),
                                  column(12,
                                         column(4, selectInput("colorVar", "Color Variable", colorVars, "WeekGroup")),
-                                        column(4, selectInput("sizeVar", "Size Variable", colorVars, "(None)"))
+                                        column(4, selectInput("sizeVar", "Size Variable", colorVars, "(None)")),
+                                        column(4, checkboxInput("showMA", "Include MAs"))
                                         )
                                 ),
                           column(3,
@@ -130,7 +156,19 @@ ui <- fluidPage(
                  fluidRow(column(12, column(4, selectInput("xScenario", "Scenario 1", scenarios, '1wall6targets TE')),
                                      column(4, selectInput("yScenario", "Scenario 2", scenarios, '1wall 6targets small')),
                                      column(4, sliderInput("xyGroupSize", "Group Size", value = 5L, step = 5L, min = 5L, max = 50L))),
-                          column(12, plotOutput("xyPlot", height="800px"))))
+                          column(12, plotOutput("xyPlot", height="800px")))),
+        tabPanel("Sparky Averages",
+                 fluidRow(column(12, tags$div(tags$br(),
+                                              tags$p("Averages of last 5 runs of Sparky benchmarks are listed below.",
+                                                     tags$br(),
+                                                     'How to copy to "Average for benchmarks" spreadsheet: Export the table below to ',
+                                                     tags$code('sparky.csv'),
+                                                     " in app directory, then open it in Excel. Select the runs (range C2:G21) and copy them to \"Average for benchmarks\" range D2:H21.",
+                                              tags$br(),
+                                              tags$br(),
+                                              actionButton("exportSparkyAverages", "Export to sparky.csv")),
+                                              tags$hr())),
+                          column(12, tableOutput("sparkyAverages"))))
       )
     )
   )
@@ -141,7 +179,7 @@ server <- function(input, output, session) {
     included.
   })
 
-  stats. <- reactive({
+  stats0. <- reactive({
     if (!is.null(input$csvFile)) {
       stats <- data.table(read_csv(input$csvFile$datapath, col_types = cols(DateTime = col_datetime(format = "%Y-%m-%dT%H:%M:%S"))))
       stats <- process_stats(stats)
@@ -153,6 +191,11 @@ server <- function(input, output, session) {
 
     stats[, WeekGroup := as.factor(as.integer(Week / input$weekBucketSize) * input$weekBucketSize)]
     stats[, NGroup := as.factor(as.integer(N / input$nBucketSize) * input$nBucketSize)]
+  })
+
+  stats. <- reactive({
+    stats <- stats0.()
+
     if (nchar(input$scenarioLines) > 0) {
       parts <- tolower(strsplit(input$scenarioLines, "\n")[[1]])
       included <- stats[, tolower(Scenario) %in% parts]
@@ -252,7 +295,8 @@ server <- function(input, output, session) {
       { if(input$xLabel != '') xlab(input$xLabel) else list() } +
       { if(input$yLabel != '') ylab(input$yLabel) else list() } +
       { if(input$trends == 'None') list() else if (input$trends == 'Line') geom_smooth(method='lm', se=FALSE, size=1) else geom_smooth(method='loess', se=FALSE, size=1) } +
-      { if(input$flipAxes) coord_flip() else list() }
+      { if(input$flipAxes) coord_flip() else list() } +
+      { if(input$showMA) mas() else list() }
   })
 
   output$xyPlot <- renderPlot({
@@ -263,6 +307,20 @@ server <- function(input, output, session) {
           Y=.SD[Scenario==input$yScenario, mean(Score, na.rm=TRUE)]),
       by=Group][!is.nan(X+Y)]
     qplot(X, Y, data=xyData, col=Group) + xlab(input$xScenario) + ylab(input$yScenario) + geom_smooth(method="lm", se=FALSE) + pt()
+  })
+
+  sparkyAverages <- reactive({
+    dcast(data = stats0.()[order(Scenario)][Scenario %in% sparkyScenarios, .SD[order(-N)][1:5, .(Score, S=5:1)], by=Scenario], formula = Scenario ~ S, value.var= 'Score')[match(sparkyScenarios, Scenario)]
+  })
+
+  observeEvent(input$exportSparkyAverages, {
+    write.csv(sparkyAverages(), "sparky.csv")
+  })
+
+  output$sparkyAverages <- renderTable({
+    sa <- data.table(sparkyAverages())
+    sa[, Average := (`1` + `2` + `3` + `4` + `5`) / 5]
+    sa[, c(1, 7, 2:6)]
   })
 }
 
